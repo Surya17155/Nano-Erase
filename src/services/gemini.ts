@@ -11,7 +11,7 @@ const OUTPUT_TYPE = 'image/png';
 const OUTPUT_QUALITY = 1.0;
 
 const EDIT_MODEL = 'gemini-2.5-flash-image';
-const API_KEY = 'AIzaSyBwy8z-t9pO2uvPCr9ruJMnrf1r-ECitiQ';
+const API_KEY = 'AIzaSyA_FouQFguXkr8D45LEjqL3hIl7-Zi3OJE';
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
