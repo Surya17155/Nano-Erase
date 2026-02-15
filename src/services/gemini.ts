@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { supabase } from "@/integrations/supabase/client";
 
 const NANO_BANANA_X_RATIO = 0.9061;
 const NANO_BANANA_Y_RATIO = 0.9207;
@@ -9,9 +9,6 @@ const COMPRESSION_TYPE = 'image/jpeg';
 const COMPRESSION_QUALITY = 0.75;
 const OUTPUT_TYPE = 'image/png';
 const OUTPUT_QUALITY = 1.0;
-
-const EDIT_MODEL = 'gemini-2.5-flash-image';
-const API_KEY = 'AIzaSyA_FouQFguXkr8D45LEjqL3hIl7-Zi3OJE';
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -177,33 +174,23 @@ async function stitchRect(
 }
 
 async function callGeminiEdit(inputData: string, rect: any, originalBase64: string, maskBase64: string): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
   const cleanData = inputData.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
-
   const prompt = `Remove the red masked area. Fill with background texture. Do not change anything else.`;
 
   return await fetchWithRetry(async () => {
-    const response = await ai.models.generateContent({
-      model: EDIT_MODEL,
-      contents: {
-        parts: [
-          { inlineData: { mimeType: COMPRESSION_TYPE, data: cleanData } },
-          { text: prompt }
-        ]
-      }
+    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+      body: { imageData: cleanData, mimeType: COMPRESSION_TYPE, prompt },
     });
 
-    const candidate = response.candidates?.[0];
-    if (candidate?.finishReason === 'SAFETY') throw new Error("Safety Block: Operation restricted.");
-
-    for (const part of candidate?.content?.parts || []) {
-      if (part.inlineData?.data) {
-        const patch = `data:image/png;base64,${part.inlineData.data}`;
-        return await stitchRect(originalBase64, patch, maskBase64, rect);
-      }
+    if (error) throw new Error(error.message || 'Edge function error');
+    if (data?.error) {
+      if (data.error === 'AI_POLICY_REJECTION') throw new Error("Safety Block: Operation restricted.");
+      throw new Error(data.error);
     }
+    if (!data?.imageBase64) throw new Error("AI returned no data.");
 
-    throw new Error("AI returned no data. Ensure the model is configured for multimodal image tasks.");
+    const patch = `data:image/png;base64,${data.imageBase64}`;
+    return await stitchRect(originalBase64, patch, maskBase64, rect);
   });
 }
 
