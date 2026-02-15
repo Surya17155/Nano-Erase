@@ -124,16 +124,17 @@
 .processing-card::before, .processing-card::after {
   content: '';
   position: absolute;
-  inset: -4px;
+  inset: -5px;
   z-index: -1;
-  background: conic-gradient(from var(--angle), blueviolet, blue, purple, cyan, blueviolet);
+  background: conic-gradient(from var(--angle), hsl(197, 100%, 50%), hsl(190, 90%, 60%), hsl(197, 100%, 50%), hsl(185, 80%, 65%), hsl(197, 100%, 50%));
   border-radius: 16px;
   animation: rotateBorder 3s linear infinite;
 }
 
 .processing-card::after {
-  filter: blur(20px);
-  opacity: 0.6;
+  filter: blur(25px);
+  opacity: 0.5;
+  background: conic-gradient(from var(--angle), hsla(197, 100%, 50%, 0.6), hsla(188, 100%, 89%, 0.6), hsla(197, 100%, 50%, 0.6), hsla(185, 80%, 65%, 0.6), hsla(197, 100%, 50%, 0.6));
 }
 
 .processing-card img {

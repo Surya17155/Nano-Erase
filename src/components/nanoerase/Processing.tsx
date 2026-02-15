@@ -70,7 +70,7 @@ export const Processing: React.FC<Props> = ({ images, onComplete }) => {
       <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-6xl">
         <div className="text-center space-y-2 mb-4">
           <h2 className="text-3xl md:text-4xl font-black tracking-tighter text-black">
-            Restoring High Fidelity
+            Removing Watermark
           </h2>
           <p className="text-gray-500 text-sm font-medium tracking-widest uppercase">
             Processing {images.length} Image{images.length > 1 ? 's' : ''}
