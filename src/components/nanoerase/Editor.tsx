@@ -97,7 +97,7 @@ export const Editor: React.FC<Props> = ({ images, currentIndex, onIndexChange, o
   };
 
   return (
-    <div className="relative w-full flex flex-col items-center justify-start pt-10 md:pt-12 overflow-hidden px-4 select-none pb-8 z-10">
+    <div className="relative w-full flex flex-col items-center justify-start pt-10 md:pt-12 overflow-hidden px-4 select-none pb-0 z-10">
       <div className="relative w-full max-w-[1200px] flex items-center justify-center h-auto min-h-[220px] sm:min-h-[400px] md:min-h-[500px] mb-4 md:mb-12">
         <div className="relative w-full h-full flex items-center justify-center" style={{ perspective: '1200px' }}>
           {images.map((img, idx) => {

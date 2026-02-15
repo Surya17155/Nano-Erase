@@ -153,7 +153,7 @@ export const Header: React.FC<Props> = ({ onLogoClick }) => {
               <p className="text-gray-500 font-medium">Enjoy unlimited clean images.</p>
             </div>
             <div className="bg-[#F7F6F3] rounded-[24px] p-8 border border-black/5 relative overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <h3 className="text-xl font-black text-black mb-2">Free Forever Plan</h3>
+              <h3 className="text-xl font-black text-black mb-2">Student Budget Plan</h3>
               <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-5xl font-black text-black">₹0</span>
               </div>
@@ -162,7 +162,16 @@ export const Header: React.FC<Props> = ({ onLogoClick }) => {
                   <Check className="w-5 h-5 text-green-700 mt-0.5" />
                   <span className="font-medium text-gray-700 leading-tight">Bulk Gemini watermark removal</span>
                 </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-green-700 mt-0.5" />
+                  <span className="font-medium text-gray-700 leading-tight">One-click usage</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-green-700 mt-0.5" />
+                  <span className="font-medium text-gray-700 leading-tight">Zero ads begging you to upgrade</span>
+                </div>
               </div>
+              <p className="text-sm text-gray-500 font-medium mb-6 text-center">Enjoy it FREE while my API credits are alive 🕯️</p>
               <button onClick={() => setIsPricingOpen(false)} className="w-full py-4 bg-black text-white rounded-xl font-bold hover:scale-[1.02] transition-all">Start Now</button>
             </div>
           </div>
@@ -215,8 +224,29 @@ export const Header: React.FC<Props> = ({ onLogoClick }) => {
               <X className="w-6 h-6 text-gray-500" />
             </button>
             <div className="prose prose-lg max-w-none text-gray-600">
-              <h2 className="text-3xl font-black text-black mb-6">Restoring your images.</h2>
-              <p className="mb-6">I built this tool because I was tired of watermarks ruining perfect AI generations. NanoErase is optimized specifically for the Gemini star watermark.</p>
+              <h2 className="text-3xl font-black text-black mb-4">You don't like watermarks, right?</h2>
+              <p className="mb-4 font-medium">That's why you're here. Congratulations, you clicked correctly.</p>
+              <p className="mb-4">Every time I create an image with Google Gemini, that bloody star-shaped watermark ⭐ shows up and ruins an otherwise perfect image. Like bro, I made this, not you.</p>
+              <p className="mb-2 font-semibold text-black">So I did what every Indian student does.</p>
+              <p className="mb-4">I Googled: <em>"FREE watermark remover"</em>.</p>
+              <p className="mb-1 font-semibold text-black">Free?</p>
+              <p className="mb-4">Nothing is free. Ever.</p>
+              <p className="mb-3">Most tools either:</p>
+              <ul className="list-disc list-inside mb-4 space-y-1 text-gray-600">
+                <li>Put limits on the free plan</li>
+                <li>Don't support bulk removal</li>
+                <li>Or suddenly ask for money like it was always the plan 💸</li>
+              </ul>
+              <p className="mb-4">If you're a student, freelancer, or content creator using Gemini to generate lots of images, you already know the pain. Bulk images + watermark = no truly free solution.</p>
+              <p className="mb-2 font-semibold text-black text-lg">So I built one.</p>
+              <ul className="list-none mb-4 space-y-1">
+                <li>✅ Completely free (for now)</li>
+                <li>✅ One-click bulk watermark removal</li>
+                <li>✅ Optimized only for Gemini watermarks</li>
+                <li>✅ No login. No subscription. No nonsense.</li>
+              </ul>
+              <p className="mb-4">This tool will stay free until my API free limits are over. If it stops working due to high usage, I'll update it here instead of pretending nothing happened. Transparency is rare. Enjoy it.</p>
+              <p className="font-semibold text-black">Until then, it's all yours. Use it well 🫡</p>
               <div className="flex flex-col items-center gap-4 border-t border-gray-100 pt-6 mt-8">
                 <span className="font-bold text-gray-400 text-sm tracking-wide uppercase">Created by Surya Kant</span>
                 <a href="https://linkedin.com/in/suryakant17155/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-6 py-3 bg-[#0077b5] text-white rounded-full font-bold text-sm shadow-lg">
