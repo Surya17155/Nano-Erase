@@ -18,6 +18,7 @@ export const Results: React.FC<Props> = ({ images, onDownloadAll, onReset }) => 
         <div className="flex flex-col gap-2">
           <h2 className="text-[32px] md:text-[40px] font-black tracking-tight text-black">Results Ready</h2>
           <p className="text-gray-400 font-semibold uppercase text-[11px] tracking-[0.2em]">
+            WATERMARK REMOVED
           </p>
         </div>
 

@@ -103,7 +103,7 @@ export const Processing: React.FC<Props> = ({ images, onComplete }) => {
             Removing Watermark
           </h2>
           <p className="text-gray-500 text-sm font-medium tracking-widest uppercase">
-            Processing {images.length} Image{images.length > 1 ? 's' : ''} in parallel
+            PROCESSING {images.length} IMAGE{images.length > 1 ? 'S' : ''}
           </p>
         </div>
 
