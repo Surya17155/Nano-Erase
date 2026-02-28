@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { ImageFile } from '@/types/nanoerase';
-import { removeWatermark, detectWatermarksBatch } from '@/services/gemini';
+import { prepareImageForBatch, processBatch, detectWatermarksBatch, PreparedImage } from '@/services/gemini';
 import { AlertCircle, ShieldAlert } from 'lucide-react';
 
 interface Props {
@@ -20,46 +20,76 @@ export const Processing: React.FC<Props> = ({ images, onComplete }) => {
 
     const runPipeline = async () => {
       const start = Date.now();
+      const resultMap: Record<string, ImageFile> = {};
 
-      const processSingleImage = async (img: ImageFile): Promise<ImageFile> => {
-        try {
-          let maskToSend = img.mask;
+      // Initialize result map
+      for (const img of images) {
+        resultMap[img.id] = { ...img };
+      }
 
-          if (img.mode === 'ai' && !maskToSend) {
-            const detectionResult = await detectWatermarksBatch([{ id: img.id, preview: img.preview }]);
-            maskToSend = detectionResult[img.id];
+      try {
+        // Step 1: Prepare all images in parallel (local canvas work)
+        const prepPromises = images.map(async (img) => {
+          try {
+            let maskToSend = img.mask;
+            if (img.mode === 'ai' && !maskToSend) {
+              const detectionResult = await detectWatermarksBatch([{ id: img.id, preview: img.preview }]);
+              maskToSend = detectionResult[img.id];
+            }
+            resultMap[img.id].mask = maskToSend;
+            return await prepareImageForBatch(img.preview, img.id, maskToSend);
+          } catch (err: any) {
+            console.error(`Prep error ${img.id}:`, err);
+            resultMap[img.id] = { ...resultMap[img.id], status: 'error', error: err.message };
+            return null;
           }
+        });
 
-          const prompt = img.mode === 'manual'
-            ? "fill the masked area seamlessly with background"
-            : undefined;
+        const prepared = (await Promise.all(prepPromises)).filter(Boolean) as PreparedImage[];
 
-          const processedBase64 = await removeWatermark(img.preview, prompt, maskToSend);
-
-          setProcessedCount(prev => prev + 1);
-          return { ...img, processed: processedBase64, status: 'done', mask: maskToSend };
-
-        } catch (err: any) {
-          console.error(`Error processing ${img.id}:`, err);
-          setProcessedCount(prev => prev + 1);
-
-          let msg = err.message || "Server Error";
-          if (msg.includes("AI_POLICY_REJECTION")) {
-            msg = "Content restricted by AI Safety Policy. Try manual mode.";
-          }
-          setLastErrorMessage(msg);
-          return { ...img, status: 'error', error: msg };
+        if (prepared.length === 0) {
+          // No images to process, complete with current state
+          const elapsed = Date.now() - start;
+          setTimeout(() => onComplete(Object.values(resultMap)), Math.max(0, 2000 - elapsed));
+          return;
         }
-      };
 
-      const promises = images.map(img => processSingleImage(img));
-      const results = await Promise.all(promises);
+        // Step 2: Send ALL images in a single batch call (parallel on server)
+        const batchResults = await processBatch(prepared, (id) => {
+          setProcessedCount(prev => prev + 1);
+        });
+
+        // Step 3: Apply results
+        for (const [id, processedBase64] of Object.entries(batchResults)) {
+          resultMap[id] = { ...resultMap[id], processed: processedBase64, status: 'done' };
+          setProcessedCount(prev => prev + 1);
+        }
+
+        // Mark any prepared but not returned as errors
+        for (const p of prepared) {
+          if (!batchResults[p.id] && resultMap[p.id].status !== 'error') {
+            resultMap[p.id] = { ...resultMap[p.id], status: 'error', error: 'No result returned' };
+          }
+        }
+      } catch (err: any) {
+        console.error('Batch processing error:', err);
+        let msg = err.message || "Server Error";
+        if (msg.includes("AI_POLICY_REJECTION")) {
+          msg = "Content restricted by AI Safety Policy. Try manual mode.";
+        }
+        setLastErrorMessage(msg);
+
+        // Mark all non-done images as error
+        for (const img of images) {
+          if (resultMap[img.id].status !== 'done') {
+            resultMap[img.id] = { ...resultMap[img.id], status: 'error', error: msg };
+          }
+        }
+      }
 
       const elapsed = Date.now() - start;
       const minTime = 2000;
-      const wait = Math.max(0, minTime - elapsed);
-
-      setTimeout(() => onComplete(results), wait);
+      setTimeout(() => onComplete(Object.values(resultMap)), Math.max(0, minTime - elapsed));
     };
 
     runPipeline();
@@ -73,7 +103,7 @@ export const Processing: React.FC<Props> = ({ images, onComplete }) => {
             Removing Watermark
           </h2>
           <p className="text-gray-500 text-sm font-medium tracking-widest uppercase">
-            Processing {images.length} Image{images.length > 1 ? 's' : ''}
+            Processing {images.length} Image{images.length > 1 ? 's' : ''} in parallel
           </p>
         </div>
 

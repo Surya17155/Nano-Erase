@@ -10,23 +10,6 @@ const COMPRESSION_QUALITY = 0.75;
 const OUTPUT_TYPE = 'image/png';
 const OUTPUT_QUALITY = 1.0;
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-async function fetchWithRetry<T>(fn: () => Promise<T>, retries = 2, backoff = 500): Promise<T> {
-  try {
-    return await fn();
-  } catch (error: any) {
-    const msg = error.toString();
-    if (msg.includes('400') || msg.includes('INVALID_ARGUMENT') || msg.includes('SAFETY')) {
-      throw error;
-    }
-    if (retries <= 0) throw error;
-    console.warn(`Gemini API retry (${retries} left)...`, error.message);
-    await delay(backoff);
-    return fetchWithRetry(fn, retries - 1, backoff * 1.5);
-  }
-}
-
 async function toBase64(urlOrBlob: string): Promise<string> {
   if (urlOrBlob.startsWith('data:')) return urlOrBlob;
   try {
@@ -173,27 +156,6 @@ async function stitchRect(
   });
 }
 
-async function callGeminiEdit(inputData: string, rect: any, originalBase64: string, maskBase64: string): Promise<string> {
-  const cleanData = inputData.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
-  const prompt = `Remove the red masked area. Fill with background texture. Do not change anything else.`;
-
-  return await fetchWithRetry(async () => {
-    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
-      body: { imageData: cleanData, mimeType: COMPRESSION_TYPE, prompt },
-    });
-
-    if (error) throw new Error(error.message || 'Edge function error');
-    if (data?.error) {
-      if (data.error === 'AI_POLICY_REJECTION') throw new Error("Safety Block: Operation restricted.");
-      throw new Error(data.error);
-    }
-    if (!data?.imageBase64) throw new Error("AI returned no data.");
-
-    const patch = `data:image/png;base64,${data.imageBase64}`;
-    return await stitchRect(originalBase64, patch, maskBase64, rect);
-  });
-}
-
 export async function detectWatermarksBatch(
   items: { id: string; preview: string }[]
 ): Promise<Record<string, string>> {
@@ -238,6 +200,102 @@ export async function detectWatermarksBatch(
   return masks;
 }
 
+/** Prepare one image for the batch API: returns the inpaint crop data + metadata needed for stitching */
+export interface PreparedImage {
+  id: string;
+  inputData: string; // base64 crop to send to AI (no data: prefix)
+  originalBase64: string;
+  maskBase64: string;
+  rect: { x: number; y: number; w: number; h: number };
+  prompt: string;
+}
+
+export async function prepareImageForBatch(
+  imageInput: string,
+  id: string,
+  maskBase64?: string
+): Promise<PreparedImage | null> {
+  const fullBase64 = await toBase64(imageInput);
+  const img = new Image(); img.src = fullBase64; await img.decode();
+
+  const targetMask = maskBase64 || (await detectWatermarksBatch([{ id, preview: fullBase64 }]))[id];
+  if (!targetMask) return null;
+
+  const rawBounds = await getMaskBounds(targetMask);
+  if (!rawBounds) return null;
+
+  const minImgDim = Math.min(img.width, img.height);
+  let contextSize = 512;
+  if (rawBounds.w > 400 || rawBounds.h > 400) contextSize = 1024;
+  contextSize = Math.min(minImgDim, contextSize);
+
+  const targetRect = {
+    x: Math.max(0, Math.floor(rawBounds.x + (rawBounds.w / 2) - (contextSize / 2))),
+    y: Math.max(0, Math.floor(rawBounds.y + (rawBounds.h / 2) - (contextSize / 2))),
+    w: contextSize,
+    h: contextSize
+  };
+
+  if (targetRect.x + targetRect.w > img.width) targetRect.x = Math.max(0, img.width - targetRect.w);
+  if (targetRect.y + targetRect.h > img.height) targetRect.y = Math.max(0, img.height - targetRect.h);
+
+  const inputToAI = await createInpaintTarget(fullBase64, targetMask, targetRect);
+  const cleanData = inputToAI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+
+  return {
+    id,
+    inputData: cleanData,
+    originalBase64: fullBase64,
+    maskBase64: targetMask,
+    rect: targetRect,
+    prompt: `Remove the red masked area. Fill with background texture. Do not change anything else.`,
+  };
+}
+
+/** Send a batch of prepared images to the edge function and stitch results */
+export async function processBatch(
+  prepared: PreparedImage[],
+  onProgress?: (id: string) => void
+): Promise<Record<string, string>> {
+  const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+    body: {
+      batch: prepared.map(p => ({
+        id: p.id,
+        imageData: p.inputData,
+        mimeType: COMPRESSION_TYPE,
+        prompt: p.prompt,
+      })),
+    },
+  });
+
+  if (error) throw new Error(error.message || 'Batch processing failed');
+  if (!data?.results) throw new Error('No batch results returned');
+
+  const results: Record<string, string> = {};
+
+  // Stitch all results in parallel
+  await Promise.all(
+    (data.results as Array<{ id: string; imageBase64?: string; error?: string }>).map(async (r) => {
+      const prep = prepared.find(p => p.id === r.id);
+      if (!prep) return;
+
+      if (r.error) {
+        throw new Error(r.error);
+      }
+
+      if (r.imageBase64) {
+        const patch = `data:image/png;base64,${r.imageBase64}`;
+        results[r.id] = await stitchRect(prep.originalBase64, patch, prep.maskBase64, prep.rect);
+      }
+
+      onProgress?.(r.id);
+    })
+  );
+
+  return results;
+}
+
+// Keep single-image function for backward compat
 export async function removeWatermark(imageInput: string, manualPrompt?: string, maskBase64?: string): Promise<string> {
   const fullBase64 = await toBase64(imageInput);
   const img = new Image(); img.src = fullBase64; await img.decode();
@@ -264,7 +322,21 @@ export async function removeWatermark(imageInput: string, manualPrompt?: string,
     if (targetRect.y + targetRect.h > img.height) targetRect.y = Math.max(0, img.height - targetRect.h);
 
     const inputToAI = await createInpaintTarget(fullBase64, targetMask, targetRect);
-    return await callGeminiEdit(inputToAI, targetRect, fullBase64, targetMask);
+    const cleanData = inputToAI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+
+    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+      body: { imageData: cleanData, mimeType: COMPRESSION_TYPE, prompt: `Remove the red masked area. Fill with background texture. Do not change anything else.` },
+    });
+
+    if (error) throw new Error(error.message || 'Edge function error');
+    if (data?.error) {
+      if (data.error === 'AI_POLICY_REJECTION') throw new Error("Safety Block: Operation restricted.");
+      throw new Error(data.error);
+    }
+    if (!data?.imageBase64) throw new Error("AI returned no data.");
+
+    const patch = `data:image/png;base64,${data.imageBase64}`;
+    return await stitchRect(fullBase64, patch, targetMask, targetRect);
   }
 
   return fullBase64;
