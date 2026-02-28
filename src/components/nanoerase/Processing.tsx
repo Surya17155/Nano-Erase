@@ -88,7 +88,7 @@ export const Processing: React.FC<Props> = ({ images, onComplete }) => {
       }
 
       const elapsed = Date.now() - start;
-      const minTime = 2000;
+      const minTime = 300;
       setTimeout(() => onComplete(Object.values(resultMap)), Math.max(0, minTime - elapsed));
     };
 

@@ -6,9 +6,9 @@ const NANO_BANANA_W_RATIO = 0.0709;
 const NANO_BANANA_H_RATIO = 0.0616;
 
 const COMPRESSION_TYPE = 'image/jpeg';
-const COMPRESSION_QUALITY = 0.75;
-const OUTPUT_TYPE = 'image/png';
-const OUTPUT_QUALITY = 1.0;
+const COMPRESSION_QUALITY = 0.50;
+const OUTPUT_TYPE = 'image/jpeg';
+const OUTPUT_QUALITY = 0.92;
 
 async function toBase64(urlOrBlob: string): Promise<string> {
   if (urlOrBlob.startsWith('data:')) return urlOrBlob;
@@ -63,39 +63,34 @@ async function getMaskBounds(maskBase64: string): Promise<{x: number, y: number,
 }
 
 async function createInpaintTarget(imageBase64: string, maskBase64: string, rect: any): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image(); img.src = imageBase64;
-    img.onload = () => {
-      const mImg = new Image(); mImg.src = maskBase64;
-      mImg.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = rect.w; canvas.height = rect.h;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) return resolve(imageBase64);
+  const img = new Image(); img.src = imageBase64; await img.decode();
+  const mImg = new Image(); mImg.src = maskBase64; await mImg.decode();
 
-        ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+  const canvas = document.createElement('canvas');
+  canvas.width = rect.w; canvas.height = rect.h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return imageBase64;
 
-        const maskCanvas = document.createElement('canvas');
-        maskCanvas.width = rect.w; maskCanvas.height = rect.h;
-        const mCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
-        if (mCtx) {
-          mCtx.drawImage(mImg, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-          const iData = mCtx.getImageData(0, 0, rect.w, rect.h);
-          const data = iData.data;
-          for (let i = 0; i < data.length; i += 4) {
-            if (data[i] > 100 || data[i+1] > 100 || data[i+2] > 100) {
-              data[i] = 255; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
-            } else {
-              data[i+3] = 0;
-            }
-          }
-          mCtx.putImageData(iData, 0, 0);
-          ctx.drawImage(maskCanvas, 0, 0);
-        }
-        resolve(canvas.toDataURL(COMPRESSION_TYPE, COMPRESSION_QUALITY));
-      };
-    };
-  });
+  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = rect.w; maskCanvas.height = rect.h;
+  const mCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+  if (mCtx) {
+    mCtx.drawImage(mImg, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+    const iData = mCtx.getImageData(0, 0, rect.w, rect.h);
+    const data = iData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 100 || data[i+1] > 100 || data[i+2] > 100) {
+        data[i] = 255; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+      } else {
+        data[i+3] = 0;
+      }
+    }
+    mCtx.putImageData(iData, 0, 0);
+    ctx.drawImage(maskCanvas, 0, 0);
+  }
+  return canvas.toDataURL(COMPRESSION_TYPE, COMPRESSION_QUALITY);
 }
 
 async function stitchRect(
@@ -104,56 +99,49 @@ async function stitchRect(
   maskBase64: string,
   rect: {x:number, y:number, w:number, h:number}
 ): Promise<string> {
-  return new Promise((resolve) => {
-    const original = new Image(); original.src = originalBase64;
-    original.onload = () => {
-      const patch = new Image(); patch.src = patchBase64;
-      patch.onload = () => {
-        const mask = new Image(); mask.src = maskBase64;
-        mask.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = original.width; canvas.height = original.height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return resolve(originalBase64);
+  const original = new Image(); original.src = originalBase64; await original.decode();
+  const patch = new Image(); patch.src = patchBase64; await patch.decode();
+  const mask = new Image(); mask.src = maskBase64; await mask.decode();
 
-          ctx.drawImage(original, 0, 0);
+  const canvas = document.createElement('canvas');
+  canvas.width = original.width; canvas.height = original.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return originalBase64;
 
-          const patchCanvas = document.createElement('canvas');
-          patchCanvas.width = rect.w; patchCanvas.height = rect.h;
-          const pCtx = patchCanvas.getContext('2d');
-          if (pCtx) {
-            pCtx.drawImage(patch, 0, 0, rect.w, rect.h);
-            const patchData = pCtx.getImageData(0, 0, rect.w, rect.h);
-            const maskCanvas = document.createElement('canvas');
-            maskCanvas.width = rect.w; maskCanvas.height = rect.h;
-            const mCtx = maskCanvas.getContext('2d');
-            if (mCtx) {
-              mCtx.drawImage(mask, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-              const maskData = mCtx.getImageData(0, 0, rect.w, rect.h);
-              const finalData = pCtx.createImageData(rect.w, rect.h);
+  ctx.drawImage(original, 0, 0);
 
-              for (let i = 0; i < patchData.data.length; i += 4) {
-                const isMasked = maskData.data[i] > 80 || maskData.data[i+1] > 80 || maskData.data[i+2] > 80;
-                if (isMasked) {
-                  finalData.data[i] = patchData.data[i];
-                  finalData.data[i+1] = patchData.data[i+1];
-                  finalData.data[i+2] = patchData.data[i+2];
-                  finalData.data[i+3] = 255;
-                } else {
-                  finalData.data[i+3] = 0;
-                }
-              }
-              pCtx.putImageData(finalData, 0, 0);
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = 'high';
-              ctx.drawImage(patchCanvas, rect.x, rect.y);
-            }
-          }
-          resolve(canvas.toDataURL(OUTPUT_TYPE, OUTPUT_QUALITY));
-        };
-      };
-    };
-  });
+  const patchCanvas = document.createElement('canvas');
+  patchCanvas.width = rect.w; patchCanvas.height = rect.h;
+  const pCtx = patchCanvas.getContext('2d');
+  if (pCtx) {
+    pCtx.drawImage(patch, 0, 0, rect.w, rect.h);
+    const patchData = pCtx.getImageData(0, 0, rect.w, rect.h);
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = rect.w; maskCanvas.height = rect.h;
+    const mCtx = maskCanvas.getContext('2d');
+    if (mCtx) {
+      mCtx.drawImage(mask, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+      const maskData = mCtx.getImageData(0, 0, rect.w, rect.h);
+      const finalData = pCtx.createImageData(rect.w, rect.h);
+
+      for (let i = 0; i < patchData.data.length; i += 4) {
+        const isMasked = maskData.data[i] > 80 || maskData.data[i+1] > 80 || maskData.data[i+2] > 80;
+        if (isMasked) {
+          finalData.data[i] = patchData.data[i];
+          finalData.data[i+1] = patchData.data[i+1];
+          finalData.data[i+2] = patchData.data[i+2];
+          finalData.data[i+3] = 255;
+        } else {
+          finalData.data[i+3] = 0;
+        }
+      }
+      pCtx.putImageData(finalData, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(patchCanvas, rect.x, rect.y);
+    }
+  }
+  return canvas.toDataURL(OUTPUT_TYPE, OUTPUT_QUALITY);
 }
 
 export async function detectWatermarksBatch(
@@ -225,8 +213,8 @@ export async function prepareImageForBatch(
   if (!rawBounds) return null;
 
   const minImgDim = Math.min(img.width, img.height);
-  let contextSize = 512;
-  if (rawBounds.w > 400 || rawBounds.h > 400) contextSize = 1024;
+  let contextSize = 256;
+  if (rawBounds.w > 200 || rawBounds.h > 200) contextSize = 512;
   contextSize = Math.min(minImgDim, contextSize);
 
   const targetRect = {
@@ -307,8 +295,8 @@ export async function removeWatermark(imageInput: string, manualPrompt?: string,
 
   if (rawBounds) {
     const minImgDim = Math.min(img.width, img.height);
-    let contextSize = 512;
-    if (rawBounds.w > 400 || rawBounds.h > 400) contextSize = 1024;
+    let contextSize = 256;
+    if (rawBounds.w > 200 || rawBounds.h > 200) contextSize = 512;
     contextSize = Math.min(minImgDim, contextSize);
 
     const targetRect = {
